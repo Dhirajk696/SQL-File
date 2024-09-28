@@ -1,0 +1,100 @@
+WITH T1 AS (
+    SELECT rownum AS rnum, CASE_no, HEARING_DATE AS Tdate, FINAL_BENCH_NO
+    FROM CL_FILE_TEMP_NEW
+    WHERE TRUNC(TO_DATE(HEARING_DATE, 'dd/mm/rrrr')) = TRUNC(TO_DATE(:cldate, 'dd/mm/rrrr'))
+      AND FINAL_BENCH_NO <> '15'
+),
+BenchNameCTE AS (
+    SELECT BENCH_CODE, BENCH_NAME
+    FROM BENCH_NAME_MAST
+),
+CentralRoomFileMovement AS (
+    SELECT p1.case_no, 
+           q1.CREATEDBY || ', ' || q1.CREATEDON AS Central_room,
+           ROW_NUMBER() OVER (PARTITION BY p1.case_no ORDER BY q1.CREATEDON) AS rn
+    FROM trn_bor_casereg a1
+    JOIN FILE_MOVE_CONFIG b1 ON a1.Usercode = b1.USERCODE
+    JOIN CL_FILE_TEMP_NEW p1 ON a1.case_no = p1.case_no
+    JOIN CNTRL_ROOM1 q1 ON q1.CASEDTL = p1.case_no
+    WHERE p1.FINAL_BENCH_NO <> '15'
+      AND p1.HEARING_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+      AND q1.CASUELIST_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+),
+CauseListSection AS (
+    SELECT p1.case_no, 
+           q1.CREATEDBY || ', ' || q1.CREATEDON AS Cause_list_section,
+           ROW_NUMBER() OVER (PARTITION BY p1.case_no ORDER BY q1.CREATEDON) AS rn
+    FROM trn_bor_casereg a1
+    JOIN FILE_MOVE_CONFIG b1 ON a1.Usercode = b1.USERCODE
+    JOIN CL_FILE_TEMP_NEW p1 ON a1.case_no = p1.case_no
+    JOIN CAUSELIST_SECTION q1 ON q1.CASEDTL = p1.case_no
+    WHERE p1.FINAL_BENCH_NO <> '15'
+      AND q1.CASUELIST_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+),
+BenchFile AS (
+    SELECT p1.case_no, 
+           q1.CREATEDBY || ', ' || q1.CREATEDON AS Bench_File,
+           ROW_NUMBER() OVER (PARTITION BY p1.case_no ORDER BY q1.CREATEDON) AS rn
+    FROM trn_bor_casereg a1
+    JOIN FILE_MOVE_CONFIG b1 ON a1.Usercode = b1.USERCODE
+    JOIN CL_FILE_TEMP_NEW p1 ON a1.case_no = p1.case_no
+    JOIN BENCH_FILE q1 ON q1.CASEDTL = p1.case_no
+    WHERE p1.FINAL_BENCH_NO <> '15'
+      AND p1.HEARING_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+      AND q1.CAUSELIST_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+),
+BenchToCauseList AS (
+    SELECT p1.case_no, 
+           q1.CREATEDBY || ', ' || q1.CREATEDON AS Bench_to_causelist,
+           ROW_NUMBER() OVER (PARTITION BY p1.case_no ORDER BY q1.CREATEDON) AS rn
+    FROM trn_bor_casereg a1
+    JOIN FILE_MOVE_CONFIG b1 ON a1.Usercode = b1.USERCODE
+    JOIN CL_FILE_TEMP_NEW p1 ON a1.case_no = p1.case_no
+    JOIN CAUSELIST_SECTIONBACK q1 ON q1.CASEDTL = p1.case_no
+    WHERE p1.FINAL_BENCH_NO <> '15'
+      AND p1.HEARING_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+      AND q1.CASUELIST_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+),
+CauseListToCentralRoom AS (
+    SELECT p1.case_no, 
+           q1.CREATEDBY || ', ' || q1.CREATEDON AS CauseList_to_CentralRoom,
+           ROW_NUMBER() OVER (PARTITION BY p1.case_no ORDER BY q1.CREATEDON) AS rn
+    FROM trn_bor_casereg a1
+    JOIN FILE_MOVE_CONFIG b1 ON a1.Usercode = b1.USERCODE
+    JOIN CL_FILE_TEMP_NEW p1 ON a1.case_no = p1.case_no
+    JOIN CNTRL_ROOMReceive q1 ON q1.CASEDTL = p1.case_no
+    WHERE p1.FINAL_BENCH_NO <> '15'
+      AND p1.HEARING_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+      AND q1.CASUELIST_DATE = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+),
+CtrlReceived AS (
+    SELECT p1.case_no, 
+           q1.CREATEDBY || ', ' || q1.CREATEDON AS Ctrl_received,
+           ROW_NUMBER() OVER (PARTITION BY p1.case_no ORDER BY q1.CREATEDON) AS rn
+    FROM trn_bor_casereg a1
+    JOIN FILE_MOVE_CONFIG b1 ON a1.Usercode = b1.USERCODE
+    JOIN CL_FILE_TEMP_NEW p1 ON a1.case_no = p1.case_no
+    JOIN CNTRL_ROOMReceive q1 ON q1.CASEDTL = p1.case_no
+    WHERE p1.FINAL_BENCH_NO <> '15'
+      AND q1.CREATEDON = (SELECT Tdate FROM T1 WHERE T1.CASE_no = p1.case_no)
+)
+SELECT DISTINCT 
+    T1.CASE_no,
+    T1.Tdate,
+    T1.rnum,
+    b.BENCH_NAME AS Benchname,
+    c.Central_room AS Central_room_file_movement,
+    cl.Cause_list_section AS Cause_list_section,
+    bf.Bench_File AS Bench_File,
+    bcl.Bench_to_causelist AS Bench_to_causelist,
+    clr.CauseList_to_CentralRoom AS CAUSELIST_TO_CENTRALROOM,
+    cr.Ctrl_received AS Central_roomlibrary
+FROM T1
+LEFT JOIN BenchNameCTE b ON b.BENCH_CODE = T1.FINAL_BENCH_NO
+LEFT JOIN CentralRoomFileMovement c ON c.case_no = T1.CASE_no AND c.rn = 1
+LEFT JOIN CauseListSection cl ON cl.case_no = T1.CASE_no AND cl.rn = 1
+LEFT JOIN BenchFile bf ON bf.case_no = T1.CASE_no AND bf.rn = 1
+LEFT JOIN BenchToCauseList bcl ON bcl.case_no = T1.CASE_no AND bcl.rn = 1
+LEFT JOIN CauseListToCentralRoom clr ON clr.case_no = T1.CASE_no AND clr.rn = 1
+LEFT JOIN CtrlReceived cr ON cr.case_no = T1.CASE_no AND cr.rn = 1
+ORDER BY T1.rnum;
