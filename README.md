@@ -37,3 +37,17 @@ END;
 BEGIN
     manage_records(1, 'Jane Doe', 'Los Aeles', 'UPDATE');
 END;
+====================
+--trigger to update particular one field in taba where anthing insert on tabb
+create or replace trigger updcav
+after insert or update or delete on tabb
+for each row
+begin
+if INSERTING OR UPDATING THEN
+ update taba set caveat_no=:new.caveat_no where case_no=:new.case_no;
+ ELSIF DELETING THEN
+        UPDATE taba
+        SET caveat_no = NULL
+        WHERE case_no = :old.case_no;
+    END IF;
+end;
