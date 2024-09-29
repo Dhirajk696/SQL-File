@@ -51,3 +51,11 @@ if INSERTING OR UPDATING THEN
         WHERE case_no = :old.case_no;
     END IF;
 end;
+=================
+create or replace trigger deletestu
+before delete on stuinfo
+for each row
+begin
+insert into detstuinfo values(:old.id,:old.name,:old.city);
+end;
+==================
